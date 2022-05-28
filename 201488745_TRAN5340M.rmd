@@ -1,0 +1,913 @@
+
+---
+title: "Coursework submission for Transport Data Science (TRAN5340M)"
+author: "Student ID - 201488745"
+subtitle: Identifying high accident prone zones for motor vehicles & factors influencing
+  them.
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+header-includes:
+- \usepackage{graphicx}
+- \usepackage{float}
+- \usepackage{subfig}
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \lhead{Student ID - 201488745}
+- \chead{}
+- \rhead{TRAN5340M - Transport Data Science}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(include = FALSE, 
+                      eval = TRUE, 
+                      echo = FALSE,
+#                      results = "hide",
+                      fig.align="center", 
+                      out.width="100%",
+                      fig.pos="H") 
+```
+
+
+```{r load_packages, eval=TRUE, message=FALSE, warning=FALSE}
+
+library(pct)
+library(sf)
+library(stplanr)
+library(tidyverse)
+library(tmap)
+library(stats19)
+library(lubridate)
+library(gridExtra)
+library(readxl)
+library(knitr)
+library(zoo)
+library(dplyr)
+library(osmdata)
+library(ggplot2)
+library(gt)
+library(ggpubr)
+```
+
+## 1. Introduction –
+More than 1.2 million deaths are reported worldwide due to motor vehicle accidents (Rolison et al., 2018). The number of non-fatal injuries reported are even more than that. Even if a motor vehicle accident does not cause death of the victim, its severe level of fatality can leave permanent damage in the victim’s life. As our roads get more and more busier, motor vehicle accidents are becoming a matter of bigger concern every day for authorities around the world.
+
+## 1.1 Scope –
+
+The scope of this report entails identifying the accident-prone zones in the local authority district of Manchester by their LSOAs (Lower Layer Super Output Areas) for accidents related to motor vehicles. The report also discusses the various external factors involved that could possibly be related to high accident rates in the top three accident prone zones in Manchester. The report also discusses how the data was procured, cleaned, preprocessed for the analysis performed.
+
+## 1.2 Area of research –
+
+Greater Manchester is a metropolitan county with a population of 2.8 million. It spans 493 square miles and is the second most populous urban area in the UK. The major cities are Manchester and Salford. For this piece of research, we will be focusing on the local authority district of Manchester. The local authority district of Manchester comprises of 270 LSOAs. Each LSOA is related to a post code. In this report, we have derived the number of motor vehicle related accidents which have occurred in each of these LSOAs in a span of five years, ranging from 2015 to 2019 and there by identify the accident prone LSOAs in Manchester.
+
+## 2. Data Collection –
+
+The data was collected using the stats19 package in R (Lovelace et al., 19). The two main datasets used in this project where the Accident dataset and the Casualties dataset. The accident dataset contains information on the accident such as crash time, location along with other variable providing information about the crash. The casualties dataset, contains information about the victims involved in the crashes. The data was collected for a span of 5 years ranging from 2015 to 2019 in order to create enough volume for an effective analysis. This data was also supplemented with the geometry data procured from the propensity cycle tour (PCT) package (Lovelace, R., Hama, L., 2020) in order to obtain the spatial information of Greater Manchester, local authority district of Mancester and their LSOAs. The data was procured from the PCT package in R using the function get_pct_zones().
+
+## 3. Data Understanding –
+
+Having obtained the data for accidents and casualties, it was necessary to understand the data very well in order to combine them appropriately and use the right variables to perform an effective analysis. The data both in the accidents and the casualties datasets were at the accident index level. Which meant that the data was suitable for aggregation. 
+
+#### 3.1 Accident Dataset – 
+This dataset consists of 32 variables of which, the variable lsoa_of_accident_location, provided the LSOA information of the location of an accident. This could be used to aggregate the data to find the total number of accidents in a particular LSOA. The severity of the accident tells us if the criticality of a particular accident was slight, severe or serious. The junction details, gives us information of the junction where the accident has occurred. The road type tells us if the road is a single carriageway or a dual carriage way, a one way street or a roundabout or a slip road. The junction control tells us about the traffic control mechanism imposed by the authorities at the junction, such as – if there is a auto traffic signal or an authorized person controlling the traffic, if there is a stop sign or the junction is uncontrolled or give way. The light condition tells us if it was daylight or darkness with lights lit, lights unlit or no lighting at all at the accident location, during the time of the accident. The weather condition tells us if the weather was fine with high winds or no high winds or if the weather was rainy with high winds or no high winds during the time of the accident. The road surface condition tells us if the road on which an accident has occurred was dry, wet or damp, frosty or icy during the time of accident. These variable were further used to analyze the high number of accidents in accident prone zones as potential external factor influencing the high number of motor vehicle related accidents.
+
+#### 3.2 Casualties Dataset – 
+This dataset consists of 16 variables. The accident index has been observed to be the key column to join the accident dataset to the casualties dataset. However, it was observed that the accident index was duplicated by the casualty reference number and the vehicle reference number denoting the nth casualty and the nth vehicle involved in a particular accident. The dataset also tells us about the gender of the casualties, their age group, the severity of the casualty. The casualty class tells us whether the casualty was a driver or a rider of it was a passenger of a pedestrian. Of all the information provided in this dataset, our focus was to utilize the data provided in the variable casualty_type. This variable helps us segregate the accidents related motor vehicles and the accidents in which no motor vehicles were involved.
+
+## 4. Data preparation and pre-processing –
+
+After completing the data understanding process, the data was fetched from the stats19 package for type = “accident” and type = “casualties” for five consecutive years from 2015 to 2019 and assigned to separate data frames for each year. The accident data frames and the casualties data frames where compared within themselves for their column names to make sure that the column names are the same withing all the accident data frames and within all the casualties data frames thereby ensuring there is no anomaly in their structures.
+
+The accident data frames and the casualties data frames for each individual year were then joined together using a left join on the accident index column and a filter on local_authority_district = “Manchester” to form combined data frames of accidents and casualties for each individual year. A record count for each of these combined data frames were then taken in order to keep a track of the number of records. The five combined data frames where then further combined together to form a one large combined data frame called - DF_ALL_ACC_CAS_MAN, which contained all the data of all accidents and casualties of Manchester that occurred from 2015 to 2019. 
+
+We then proceeded towards identifying the missing data. The function plot_missing() from the DataExplorer package was used to visualize the missing data and it was observed that the variables, datetime, time, lsoa_of_accident_location and second_road_class had missing values. The variable second_road_class was not being used in our analysis and hence could be ignored. The complete.cases() function applied on the data frame DF_ALL_ACC_CAS_MAN barring the variable  second_road_class told us that there were five such records with missing values in them. So, we further subset the data frame DF_ALL_ACC_CAS_MAN to create another data frame DF_FNL_MAN which contained only motor vehicle related data using the filter condition - casualty_type != "Pedestrian" & casualty_type != "Cyclist",  thereby narrowing it down to data related to motor vehicles only and then checking for missing values again. Now we found only three records with missing values. Two records with accident indexes 201706A035518 & 201806A144367 had missing values for time & datetime and only one record with the accident index 201506A099340 had missing value for lsoa_of_accident_location. Given that the percentage of records with missing values was very less, we chose to remove those records from our analysis by subsetting the data to create DF_FNL_MAN_COMP barring the records with those three accident indexes. This was done with the assumption that deleting only three records will not have a negative impact on our analysis further.
+
+Keeping in mind that the casualties dataset had duplicate records on accident indexes and hence our resultant datasets derived from it would also contain duplicates and would result into incorrect total count of accidents, we created another data frame DF_FNL_MAN_COMP_CLND from the data frame DF_FNL_MAN_COMP by de-duplicating the accident indexes using the function distinct() on the accident_index column there by ensuring that our resultant data set contains only one instance for each accident. We then aggregate our data in DF_FNL_MAN_COMP by lsoa_of_accident_location in order to obtain the total number of accidents in each LSOA and create a data frame DF_MAN_LSOA_AGG.
+At this stage the preparation and cleaning of our accident and casualties data related to motor vehicles only for the LSOAs of Manchester was completed. 
+
+Once, we had our main dataset prepared and cleaned, we needed the geographic information of the boundaries of the LSOAs of Manchester in order to create a map to display the accident-prone zones related to motor vehicles. We fetch this from the PCT package in R with the region names as “greater-manchester” and geography as LSOA and assign it to the data frame – LSOA_MAN. This gave us the geographic boundaries of all the LSOAs of Greater – Manchester. But since our area of research is only local authority district of Manchester we perform a left join between our data frame DF_MAN_LSOA_AGG and LSOA_MAN on “lsoa_of_accident_location” = “geo_code” to create the data frame DF_MAN_LSOA_AGG_GEOM  in order to obtain the geometric boundaries of our target LSOAs. 
+
+
+```{r #Data Collection}
+
+# Collecting stats 19 data related to accidents and caslualties for the last 5 years - 2016 to 2020
+
+#Collecting 2016 data for accidents and casualties
+ST19_ACC_2016 <- stats19::get_stats19(year = "2016", type = "accident")
+ST19_CAS_2016 <- stats19::get_stats19(year = "2016", type = "casualties")
+
+nrow(ST19_ACC_2016) # 136621
+nrow(ST19_CAS_2016) #181384
+
+#Collecting 2017 data for accidents and casualties
+
+ST19_ACC_2017 <- stats19::get_stats19(year = "2017", type = "accident")
+ST19_CAS_2017 <- stats19::get_stats19(year = "2017", type = "casualties")
+
+nrow(ST19_ACC_2017) # 129982
+nrow(ST19_CAS_2017) #170993
+
+#Collecting 2018 data for accidents and casualties
+
+ST19_ACC_2018 <- stats19::get_stats19(year = "2018", type = "accident")
+ST19_CAS_2018 <- stats19::get_stats19(year = "2018", type = "casualties")
+
+nrow(ST19_ACC_2018) # 122635
+nrow(ST19_CAS_2018) # 160597
+
+#Collecting 2019 data for accidents and casualties
+
+ST19_ACC_2019 <- stats19::get_stats19(year = "2019", type = "accident")
+ST19_CAS_2019 <- stats19::get_stats19(year = "2019", type = "casualties")
+
+nrow(ST19_ACC_2019) # 117536
+nrow(ST19_CAS_2019) # 153158
+
+#Collecting 20120 data for accidents and casualties
+
+# ST19_ACC_2020 <- stats19::get_stats19(year = "2020", type = "accident") # No files found for that year
+# ST19_CAS_2020 <- stats19::get_stats19(year = "2020", type = "casualties") #No files found for that year
+
+#Since no files found for the year 2020, to complete our 5 year window we will collect data of the year 2015
+
+ST19_ACC_2015 <- stats19::get_stats19(year = "2015", type = "accident") 
+ST19_CAS_2015 <- stats19::get_stats19(year = "2015", type = "casualties")
+
+nrow(ST19_ACC_2015) # 140056
+nrow(ST19_CAS_2015) # 186189
+
+
+```
+
+```{r}
+#class(stats19_variables)
+
+#View(stats19_variables)
+
+stats19_variables %>% filter(table == "accidents") # Getting the columnames of the accident datasets.
+stats19_variables %>% filter(table == "casualties") # Getting the columnames of the casualties datasets.
+
+# Checking all variables match in the accident datasets
+
+colnames(ST19_ACC_2015) == colnames(ST19_ACC_2016)
+colnames(ST19_ACC_2015) == colnames(ST19_ACC_2017)
+colnames(ST19_ACC_2015) == colnames(ST19_ACC_2018)
+colnames(ST19_ACC_2015) == colnames(ST19_ACC_2019)
+
+
+#View(ST19_ACC_2015)
+#View(ST19_ACC_2016)
+#View(ST19_ACC_2017)
+#View(ST19_ACC_2018)
+#View(ST19_ACC_2019)
+
+# All columns in the accident datasets above match
+
+# Checking all variables match in the casualties datasets
+
+colnames(ST19_CAS_2015) == colnames(ST19_CAS_2016)
+colnames(ST19_CAS_2015) == colnames(ST19_CAS_2017)
+colnames(ST19_CAS_2015) == colnames(ST19_CAS_2018)
+colnames(ST19_CAS_2015) == colnames(ST19_CAS_2019)
+
+#View(ST19_CAS_2015)
+#View(ST19_CAS_2016)
+#View(ST19_CAS_2017)
+#View(ST19_CAS_2018)
+#View(ST19_CAS_2019)
+
+# All columns above in the casualties datasets above match
+
+# Checking for missng values
+
+library("VIM")
+
+#aggr(ST19_ACC_2015, numbers = TRUE, prop = FALSE)
+
+#DataExplorer::plot_missing(ST19_ACC_2015)
+
+#ST19_ACC_2015 %>% Filter(ST19_ACC_2015$local_authority_district == "Manchester") %>% (is.na(ST19_ACC_2015$longitude))
+
+ST19_ACC_2019 %>% 
+  filter(local_authority_district == "Manchester") %>% 
+  filter(is.na(longitude)) %>%
+  nrow()
+
+```
+
+```{r}
+#Creating combined data frames of Accidents and Casualties for Local Authority District = "Manchester"
+
+DF_ACC_CAS_MANC_2015 <- 
+  ST19_ACC_2015 %>%
+  filter(local_authority_district == "Manchester") %>%
+  left_join(ST19_CAS_2015, c("accident_index"="accident_index"))
+
+DF_ACC_CAS_MANC_2016 <- 
+  ST19_ACC_2016 %>%
+  filter(local_authority_district == "Manchester") %>%
+  left_join(ST19_CAS_2016, c("accident_index"="accident_index"))
+
+DF_ACC_CAS_MANC_2017 <- 
+  ST19_ACC_2017 %>%
+  filter(local_authority_district == "Manchester") %>%
+  left_join(ST19_CAS_2017, c("accident_index"="accident_index"))
+
+DF_ACC_CAS_MANC_2018 <- 
+  ST19_ACC_2018 %>%
+  filter(local_authority_district == "Manchester") %>%
+  left_join(ST19_CAS_2018, c("accident_index"="accident_index"))
+
+DF_ACC_CAS_MANC_2019 <- 
+  ST19_ACC_2019 %>%
+  filter(local_authority_district == "Manchester") %>%
+  left_join(ST19_CAS_2019, c("accident_index"="accident_index"))
+
+nrow(DF_ACC_CAS_MANC_2015) # 988
+nrow(DF_ACC_CAS_MANC_2016) # 926
+nrow(DF_ACC_CAS_MANC_2017) # 1379
+nrow(DF_ACC_CAS_MANC_2018) # 1339
+nrow(DF_ACC_CAS_MANC_2019) # 1209
+
+```
+
+```{r}
+######## Combining the accident and casualties data from the datasets for Manchester above for years 2015-2019 ########
+
+DF_ALL_ACC_CAS_MAN <- bind_rows(DF_ACC_CAS_MANC_2015,
+                                DF_ACC_CAS_MANC_2016,
+                                DF_ACC_CAS_MANC_2017,
+                                DF_ACC_CAS_MANC_2018,
+                                DF_ACC_CAS_MANC_2019)
+
+nrow(DF_ALL_ACC_CAS_MAN) # 5841
+
+```
+
+```{r}
+#### Identifying missing values
+
+#DataExplorer::plot_missing(DF_ALL_ACC_CAS_MAN) # only datetime, time and lsoa_of_accident_location have missing data
+
+#names(DF_ALL_ACC_CAS_MAN)
+
+#unique(DF_ALL_ACC_CAS_MAN$second_road_class)
+
+#DF_ALL_ACC_CAS_MAN[ ,21]
+
+sum(!complete.cases(DF_ALL_ACC_CAS_MAN[ , -21])) # Only five records present with NA, -21 is used to ignore second road class as it is not required for analysis
+
+```
+
+```{r}
+## Creating dataset for motor vehicle related data only, barring Pedestrians and Cyclists
+
+unique(DF_ALL_ACC_CAS_MAN$casualty_type)
+
+DF_FNL_MAN <- DF_ALL_ACC_CAS_MAN %>% filter(casualty_type != "Pedestrian" & casualty_type != "Cyclist" ) # Filtering out pedestrians and cyclists from the dataset
+
+nrow(DF_FNL_MAN) # 3916 records found
+
+DF_FNL_MAN %>% filter(casualty_type %in% c("Cyclist", "Pedestrian")) %>% nrow() # Sanity check to perform the final data set does not contain data for cyclist and pedestrians
+
+```
+
+```{r}
+## Checking for nulls again in the FNL dataset
+
+sum(!complete.cases(DF_FNL_MAN[ ,-21])) # only three records available with the NA values
+
+#DataExplorer::plot_missing(DF_FNL_MAN[ ,-21]) # Two records with missing data for time and datetime and one record with missing data for lsoa of accident location
+
+DF_FNL_MAN %>% filter(is.na(time) & is.na(datetime)) # Two records with accident indexes - 201706A035518,201806A144367
+
+DF_FNL_MAN %>% filter(is.na(lsoa_of_accident_location)) # One record with accident index- 201506A099340
+
+```
+
+```{r}
+## Deleting the records from the final data set 
+
+DF_FNL_MAN %>% filter(accident_index %in% c("201706A035518","201806A144367","201506A099340") ) # Identifying the records with accident index to make sure there are unique records
+
+
+DF_FNL_MAN_COMP <- DF_FNL_MAN %>% filter(accident_index != "201706A035518" & accident_index != "201806A144367" & accident_index != "201506A099340") #Deleting the three records with NA
+
+DF_FNL_MAN_COMP %>% filter(accident_index %in% c("201706A035518","201806A144367","201506A099340") ) # Sanity check in the final dataset
+
+nrow(DF_FNL_MAN_COMP) # 3913
+
+sum(!complete.cases(DF_FNL_MAN_COMP[,-21])) # No NAs in the final processed dataset DF_FNL_MAN_COMP. Data pre-processing completes in this step.
+
+
+#DataExplorer::plot_missing(DF_FNL_MAN_COMP[ ,-21]) # Sanity check
+
+#View(DF_FNL_MAN_COMP)
+
+nrow(DF_FNL_MAN_COMP)
+
+DF_FNL_MAN_COMP_CLND <- DF_FNL_MAN_COMP %>% distinct(accident_index, .keep_all = TRUE)
+
+nrow(DF_FNL_MAN_COMP_CLND) # 2551
+
+#View(DF_FNL_MAN_COMP_CLND)
+
+```
+
+```{r}
+######## Exploratory Data Analysis ############
+
+DF_MAN_LSOA_AGG <- DF_FNL_MAN_COMP_CLND %>% group_by(lsoa_of_accident_location) %>% summarise(count = n()) %>%
+  arrange(desc(count))# Aggregating the data to get count of accidents per LSOA
+
+#DF_MAN_LSOA_AGG %>% rename( AccidentCount = count)
+
+names(DF_MAN_LSOA_AGG)[names(DF_MAN_LSOA_AGG) == "count"] <- "Accident Count"
+
+nrow(DF_MAN_LSOA_AGG) # 270 LSOAs with their accident counts
+#View(DF_MAN_LSOA_AGG)
+
+```
+
+```{r}
+# Getting the lsoa geometry for Manchester
+
+region_name = "greater-manchester"
+LSOA_MAN = get_pct_zones(region_name, geography = "lsoa")
+
+nrow(LSOA_MAN) #1673
+#View(LSOA_MAN)
+
+
+```
+
+```{r}
+# Merging the count by lsoa data with lsoa geometry
+
+DF_MAN_LSOA_AGG_GEOM <- DF_MAN_LSOA_AGG %>% left_join(LSOA_MAN, c("lsoa_of_accident_location" = "geo_code"), keep = TRUE)
+
+#View(DF_MAN_LSOA_AGG_GEOM)
+
+DF_MAN_LSOA_AGG_GEOM <- DF_MAN_LSOA_AGG_GEOM %>% st_as_sf()
+
+
+DF_MAN_LSOA_AGG_GEOM %>% filter(is.na(geo_code))
+
+nrow(DF_MAN_LSOA_AGG_GEOM)
+
+#tm_shape(DF_MAN_LSOA_AGG_GEOM) +
+#  tm_polygons()
+
+#tm_shape(lsoa_man)+tm_polygons()+tm_shape(DF_MAN_LSOA_AGG_GEOM) +
+#  tm_polygons(col = blues9)
+
+#ggplot(data = DF_MAN_LSOA_AGG_GEOM, mapping = aes(x = lsoa_of_accident_location, y = count )) + geom_point()
+
+#ggplot(DF_MAN_LSOA_AGG_GEOM) + geom_sf(aes(fill=count))
+
+
+#tm_shape(DF_MAN_LSOA_AGG_GEOM) +
+
+
+
+#?tm_polygons
+
+```
+## 5. Exploratory data analysis –
+
+The key part of the exploratory data analysis was to obtain summary statistics in terms of the total number of accidents of each LSOA of the area of research and then identify the top three accident prone zones in terms of the number of accidents as well as analyze those numbers with respect to the external conditions – vehicle type,  road type, junction type, traffic control at junction, light conditions, weather condition and the road surface conditions.
+
+We first plot the below interactive map by first converting the data frame DF_MAN_LSOA_AGG_GEOM to an SF object using the st_as_sf() function and using it with the data frame LSOA_MAN and funtions from the tmap package in R. The light blue areas in the map depict the LSOAs of Greater-Manchester whereas the colored area depict the LSOAs of the local authority district of Manchester. Clicking on any spot in the colored area gives us the LSOA code and the total count of motor vehicle accidents that have occurred in that LSOA during the five year period which we selected for our research.
+
+```{r}
+# Plotting the accidents on the lsoas of manchester by the number of accidents 
+
+tmap_mode("view")
+
+(Figure_1.1 <- tm_basemap(leaflet::providers$Esri.WorldStreetMap, alpha = 0.4) +
+  tm_shape(LSOA_MAN) +
+  tm_polygons(col = "#B7D8E8", alpha = 0.6) +
+  tm_shape(DF_MAN_LSOA_AGG_GEOM) +
+  tm_polygons("Accident Count", palette = "-viridis", alpha = 0.6, lwd = 0.3))### Main plot of motor vehicle accident count in Manchester
+
+#Figure_1.1
+
+tmap_save(tm = Figure_1.1, filename = "Figures/Figure_1.1.png", width = 16, height = 13 )
+
+#?tmap_save()
+
+#ggsave("Figures/Figure_1.1.png", width = 16, height = 13, plot = Figure_1.1)
+
+```
+Map showing accident prone zones in Manchester -
+```{r display_figure_1, eval=TRUE, echo=FALSE, include=TRUE, fig.align="center", out.width="60%",}
+
+#fig.cap="Accident prone zones in Manchester",
+Figure_1.1
+
+#include_graphics("Figures/Figure_1.1.png")
+```
+
+```{r}
+############# Analyzing High accident prone areas ###############
+
+#DF_MAN_LSOA_AGG_GEOM
+
+#View(DF_MAN_LSOA_AGG)
+
+#DF_FNL_MAN_COMP_CLND
+
+DF_MAN_MOTO_ACC_TOP5 <- DF_MAN_LSOA_AGG %>% slice_max(`Accident Count` ,n = 5) %>% 
+  inner_join(DF_FNL_MAN_COMP_CLND, c("lsoa_of_accident_location" = "lsoa_of_accident_location")) %>%
+  inner_join(LSOA_MAN[ ,c("geo_code","geo_name")], c("lsoa_of_accident_location" = "geo_code"))# Subsetting top 5 accident prone locations
+
+```
+
+```{r}
+# Analysing the data for the top accident prone zones 
+
+unique(DF_MAN_MOTO_ACC_TOP5$casualty_type)
+unique(DF_MAN_MOTO_ACC_TOP5$road_type)
+unique(DF_MAN_MOTO_ACC_TOP5$speed_limit)
+unique(DF_MAN_MOTO_ACC_TOP5$junction_detail)
+unique(DF_MAN_MOTO_ACC_TOP5$junction_control)
+unique(DF_MAN_MOTO_ACC_TOP5$light_conditions)
+unique(DF_MAN_MOTO_ACC_TOP5$weather_conditions)
+unique(DF_MAN_MOTO_ACC_TOP5$road_surface_conditions)
+unique(DF_MAN_MOTO_ACC_TOP5$accident_severity)
+
+# Casualty types has different subgroups for motor vehicles - casting them to only six groups : Car, Motorcycle, Bus, Heavy goods vehicle, Light goods vehicle and other motor vehicles.
+
+VEH_TYPE <-  unique(DF_MAN_MOTO_ACC_TOP5$casualty_type)
+
+DF_MAN_MOTO_ACC_TOP5 <- DF_MAN_MOTO_ACC_TOP5 %>% mutate(Vehicle_Type = case_when(casualty_type %in% c(VEH_TYPE[1], VEH_TYPE[4]) ~ "Car",
+                                                     casualty_type %in% c(VEH_TYPE[2], VEH_TYPE[3], VEH_TYPE[7], VEH_TYPE[8]) ~ "Motorcycle",
+                                                     casualty_type %in% c(VEH_TYPE[6]) ~ "Bus",
+                                                     casualty_type %in% c(VEH_TYPE[9]) ~ "Heavy Goods Vehicle",
+                                                     casualty_type %in% c(VEH_TYPE[10], VEH_TYPE[11]) ~ "Light Goods Vehicle",
+                                                     casualty_type %in% c(VEH_TYPE[5]) ~ "Other Vehicle"
+                                                                                                          )) 
+
+
+#View(DF_MAN_MOTO_ACC_TOP5)
+
+
+```
+
+```{r}
+######### Rolling up the data by each of these variables affecting them ##########
+
+DF_MAN_MOTO_ACC_TOP5_AS <- DF_MAN_MOTO_ACC_TOP5 %>%
+  group_by(lsoa_of_accident_location, geo_name, accident_severity ) %>%
+  summarise(count = n()) # Aggregating the data for the top 5 accident prone LSOAs by their accident severity in each LSOA
+
+nrow(DF_MAN_MOTO_ACC_TOP5_AS) # 16
+#View(DF_MAN_MOTO_ACC_TOP5_AS)
+
+DF_MAN_MOTO_ACC_TOP5_VT <- DF_MAN_MOTO_ACC_TOP5 %>%
+  group_by(lsoa_of_accident_location, geo_name, Vehicle_Type ) %>%
+  summarise(count = n()) # Aggregating the data for the top 5 accident prone LSOAs by their vehicle type in each LSOA
+
+nrow(DF_MAN_MOTO_ACC_TOP5_VT) # 24
+#View(DF_MAN_MOTO_ACC_TOP5_VT)
+
+DF_MAN_MOTO_ACC_TOP5_RT <- DF_MAN_MOTO_ACC_TOP5 %>%
+  group_by(lsoa_of_accident_location, geo_name, road_type ) %>%
+  summarise(count = n()) # Aggregating the data for the top 5 accident prone LSOAs by type of the road in each LSOA
+
+nrow(DF_MAN_MOTO_ACC_TOP5_RT) # 22
+#View(DF_MAN_MOTO_ACC_TOP5_RT)
+
+DF_MAN_MOTO_ACC_TOP5_SL <- DF_MAN_MOTO_ACC_TOP5 %>%
+  group_by(lsoa_of_accident_location, geo_name, speed_limit ) %>%
+  summarise(count = n()) # Aggregating the data for the top 5 accident prone LSOAs by speed limit in each LSOA
+
+nrow(DF_MAN_MOTO_ACC_TOP5_SL) #17
+#View(DF_MAN_MOTO_ACC_TOP5_SL)
+
+DF_MAN_MOTO_ACC_TOP5_JD <- DF_MAN_MOTO_ACC_TOP5 %>%
+  group_by(lsoa_of_accident_location, geo_name, junction_detail ) %>%
+  summarise(count = n()) # Aggregating the data for the top 5 accident prone LSOAs by junction details in each LSOA
+
+nrow(DF_MAN_MOTO_ACC_TOP5_JD) # 35
+#View(DF_MAN_MOTO_ACC_TOP5_JD)
+
+DF_MAN_MOTO_ACC_TOP5_JC <- DF_MAN_MOTO_ACC_TOP5 %>%
+  group_by(lsoa_of_accident_location, geo_name, junction_control ) %>%
+  summarise(count = n()) # Aggregating the data for the top 5 accident prone LSOAs by junction control in each LSOA
+
+nrow(DF_MAN_MOTO_ACC_TOP5_JC) # 23
+#View(DF_MAN_MOTO_ACC_TOP5_JC)
+
+DF_MAN_MOTO_ACC_TOP5_LC <- DF_MAN_MOTO_ACC_TOP5 %>%
+  group_by(lsoa_of_accident_location, geo_name, light_conditions ) %>%
+  summarise(count = n()) # Aggregating the data for the top 5 accident prone LSOAs by light condition in each LSOA
+
+nrow(DF_MAN_MOTO_ACC_TOP5_LC) # 23
+#View(DF_MAN_MOTO_ACC_TOP5_LC)
+
+DF_MAN_MOTO_ACC_TOP5_WC <- DF_MAN_MOTO_ACC_TOP5 %>%
+  group_by(lsoa_of_accident_location, geo_name, weather_conditions ) %>%
+  summarise(count = n()) # Aggregating the data for the top 5 accident prone LSOAs by weather condition in each LSOA
+
+nrow(DF_MAN_MOTO_ACC_TOP5_WC) # 34
+#View(DF_MAN_MOTO_ACC_TOP5_WC)
+
+DF_MAN_MOTO_ACC_TOP5_RSC <- DF_MAN_MOTO_ACC_TOP5 %>%
+  group_by(lsoa_of_accident_location, geo_name, road_surface_conditions ) %>%
+  summarise(count = n()) # Aggregating the data for the top 5 accident prone LSOAs by road surface condition in each LSOA
+
+nrow(DF_MAN_MOTO_ACC_TOP5_RSC) # 15
+#View(DF_MAN_MOTO_ACC_TOP5_RSC)
+
+
+```
+
+```{r}
+#################-Plotting-###########################
+
+## Plotting charts for LSOA - E01033674, Manchester 058C
+
+
+p <- DF_MAN_MOTO_ACC_TOP5_AS %>% filter(lsoa_of_accident_location == "E01033674") %>%
+  ggplot(aes(x = "", y=count, fill = factor(accident_severity))) + 
+  geom_bar(width = 1, stat = "identity") +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5, size = 7),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 7)) + 
+  labs(fill="accident_severity", 
+       x=NULL, 
+       y=NULL, 
+       title="Pie Chart of Accident Severity"
+       )
+
+(Figure_2.0 <- p + coord_polar(theta = "y", start=0))
+
+ggsave("Figures/Figure_2.0.png", width = 16, height = 13)
+
+
+(Figure_2.1 <- DF_MAN_MOTO_ACC_TOP5_VT %>% filter(lsoa_of_accident_location == "E01033674") %>% 
+  ggplot(aes(x= Vehicle_Type, y= count, fill = Vehicle_Type)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+labs(x = "Type of motor vehicle", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_2.1.png", width = 16, height = 13)
+
+
+(Figure_2.2 <- DF_MAN_MOTO_ACC_TOP5_RT %>% filter(lsoa_of_accident_location == "E01033674") %>% 
+  ggplot(aes(x= road_type, y= count, fill = road_type)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Type of road", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_2.2.png", width = 16, height = 13)
+
+
+(Figure_2.3 <- DF_MAN_MOTO_ACC_TOP5_JD %>% filter(lsoa_of_accident_location == "E01033674") %>% 
+  ggplot(aes(x= junction_detail, y= count, fill = junction_detail)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Junction Type Detail", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_2.3.png", width = 16, height = 13)
+
+
+(Figure_2.4 <- DF_MAN_MOTO_ACC_TOP5_JC %>% filter(lsoa_of_accident_location == "E01033674") %>% 
+  ggplot(aes(x= junction_control, y= count, fill = junction_control)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Traffic Control at Junction", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_2.4.png", width = 16, height = 13)
+
+(Figure_2.5 <- DF_MAN_MOTO_ACC_TOP5_LC %>% filter(lsoa_of_accident_location == "E01033674") %>% 
+  ggplot(aes(x= light_conditions, y= count, fill = light_conditions)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Light condition at location", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_2.5.png", width = 16, height = 13)
+
+(Figure_2.6 <- DF_MAN_MOTO_ACC_TOP5_WC %>% filter(lsoa_of_accident_location == "E01033674") %>% 
+  ggplot(aes(x= weather_conditions, y= count, fill = weather_conditions)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Weather condition at location", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_2.6.png", width = 16, height = 13)
+
+(Figure_2.7 <- DF_MAN_MOTO_ACC_TOP5_RSC %>% filter(lsoa_of_accident_location == "E01033674") %>% 
+  ggplot(aes(x= road_surface_conditions, y= count, fill = road_surface_conditions)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Road surface condition at location", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_2.7.png", width = 16, height = 13)
+
+```
+
+#### 5.1 Analyzing the top three accident prone zones in terms of the external factors mentioned in the section above –
+
+In order to identify the accident-prone zones, we use the data frame DF_MAN_LSOA_AGG created earlier where we have the total accident counts for each LSOA of our area of research. We slice it to get the top three LSOAs in terms of the count. Now since this data is aggregated data and we would want the granular data for these LSOAs again in order to aggregate them by the variables of the external conditions stated above, we join it back with the data frame DF_FNL_MAN_COMP_CLND where the cleaned granular data is already present and store the resultant data in the data frame DF_MAN_MOTO_ACC_TOP5. The data in this data frame is then aggregated separately in terms of the variables accident_severity, vehicle_type, road_type, junction_detail, junction_control, light_conditions, weather_conditions and road_surface_conditions and stored in different data frames for each variable. So, for the top 5 accident prone LSOAs in terms of accident counts, now we have data frames for each of the external conditions which contain the LSOA, the external conditions and total number of accidents which have occurred under those conditions. 
+
+We then used these data frames to plot and analyze the bar graphs showing the number of accidents occurred under these conditions for the identified accident prone LSOAs. These are discussed below –
+
+#### 5.1.1 LSOA - E01033674 (Manchester 058C)
+
+This is the top most accident prone zone in the local authority district of Manchester with 67 motor vehicle related accidents occurring in the five year duration of our research. The pie chart below tells us the numbers in terms if severity of those accidents. It can be observed from the below that of the 67 accidents 6 were serious and 61 were slight.
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 2, fig.width = 4, fig.align="center"}
+ggarrange(Figure_2.0,ncol = 1,nrow = 1,align = "h")
+```
+The bar plots below shows the number of accidents in this region by the type of the vehicle used and the road type where the accidents have occurred respectively. Of these accidents, it can be observed that, the maximum number of accidents have occurred where cars are involved followed by motorcycles and on single carriageway followed by dual carriageway. 
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_2.1, Figure_2.2, ncol = 2, nrow = 1)
+```
+The bar plot below show us the number of accidents in this region by the type of junctions where they have occurred and the prevalent traffic control at the junction where the accidents have occurred respectively. It can be observed that the highest number of accidents have occurred in junctions which are cross roads followed by T or staggered junctions. Also the right plot tells us that the maximum accidents have occurred in junctions which are uncontrolled or give way followed by the ones which have auto traffic signals.
+``````{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_2.3, Figure_2.4, ncol = 2, nrow = 1)
+```
+The bar plots below shows us the number of accidents that have occurred under different light conditions and weather conditions respectively at the location of the accidents. It can be observed that most of the accidents have occurred in day light while approximately half of it has occurred in darkness with lights lit. The weather condition tells us that the weather was fine with no winds when most of the accidents have occurred, however 14 of 67 accidents have occurred when it was raining with no high winds. 
+``````{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_2.5, Figure_2.6, ncol = 2, nrow = 1)
+```
+The below bar plot tells us the surface condition of the road of the accident location when the accidents have occurred. It can be observed that most of the accidents have occurred when the road surface condition was dry while approximately half of it has occurred where the road surfaces where wet or damp. 
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_2.7, ncol = 2, nrow = 1)
+```
+
+#### 5.1.2 LSOA – E01005316 (Manchester 053D)
+
+```{r}
+## Plotting the chart for LSOA - E01005316, Manchester 053D
+
+p <- DF_MAN_MOTO_ACC_TOP5_AS %>% filter(lsoa_of_accident_location == "E01005316") %>%
+  ggplot(aes(x = "", y=count, fill = factor(accident_severity))) + 
+  geom_bar(width = 1, stat = "identity") +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5, size = 7),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 7)) + 
+  labs(fill="accident_severity", 
+       x=NULL, 
+       y=NULL, 
+       title="Pie Chart of Accident Severity")
+
+(Figure_3.0 <- p + coord_polar(theta = "y", start=0))
+
+ggsave("Figures/Figure_3.0.png", width = 16, height = 13)
+
+
+
+(Figure_3.1 <- DF_MAN_MOTO_ACC_TOP5_VT %>% filter(lsoa_of_accident_location == "E01005316") %>% 
+  ggplot(aes(x= Vehicle_Type, y= count, fill = Vehicle_Type)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Type of motor vehicle", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_3.1.png", width = 16, height = 13)
+
+(Figure_3.2 <- DF_MAN_MOTO_ACC_TOP5_RT %>% filter(lsoa_of_accident_location == "E01005316") %>% 
+  ggplot(aes(x= road_type, y= count, fill = road_type)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Type of road", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_3.2.png", width = 16, height = 13)
+
+
+(Figure_3.3 <- DF_MAN_MOTO_ACC_TOP5_JD %>% filter(lsoa_of_accident_location == "E01005316") %>% 
+  ggplot(aes(x= junction_detail, y= count, fill = junction_detail)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Junction Type Detail", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_3.3.png", width = 16, height = 13)
+
+
+(Figure_3.4 <- DF_MAN_MOTO_ACC_TOP5_JC %>% filter(lsoa_of_accident_location == "E01005316") %>% 
+  ggplot(aes(x= junction_control, y= count, fill = junction_control)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Traffic Control at Junction", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_3.4.png", width = 16, height = 13)
+
+
+(Figure_3.5 <- DF_MAN_MOTO_ACC_TOP5_LC %>% filter(lsoa_of_accident_location == "E01005316") %>% 
+  ggplot(aes(x= light_conditions, y= count, fill = light_conditions)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Light condition at location", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_3.5.png", width = 16, height = 13)
+
+
+(Figure_3.6 <- DF_MAN_MOTO_ACC_TOP5_WC %>% filter(lsoa_of_accident_location == "E01005316") %>% 
+  ggplot(aes(x= weather_conditions, y= count, fill = weather_conditions)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Weather condition at location", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_3.6.png", width = 16, height = 13)
+
+
+(Figure_3.7 <- DF_MAN_MOTO_ACC_TOP5_RSC %>% filter(lsoa_of_accident_location == "E01005316") %>% 
+  ggplot(aes(x= road_surface_conditions, y= count, fill = road_surface_conditions)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Road surface condition at location", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_3.7.png", width = 16, height = 13)
+
+```
+
+This is the second most accident prone zone in the local authority district of Manchester with 60 motor vehicle related accidents occurring in the five-year period of our research. It can be observed from the below pie chart that out of these accidents 9 were serious and 51 were slight.
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 2, fig.width = 4, fig.align="center"}
+ggarrange(Figure_3.0,ncol = 1,nrow = 1,align = "h")
+```
+
+In the below bar plots for the type of motor vehicles involved and the type of road where the accidents have occurred, it can be observed that accident involving cars were the maximum whereas, accidents occurring in dual carriageways and single carriage ways are nearly the same and much higher than the rest. 
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_3.1, Figure_3.2, ncol = 2, nrow = 1)
+```
+
+The bar plots below for type of junction and traffic control at junction of accident location, tells us that the maximum number of accidents occurred at places where there is no junction within 20 meters. The count for this is 29. This matches with the number where there is missing data or data is out of range in the traffic control bar plot. It can also be observed that nearly half the accidents occurred at places where the traffic was uncontrolled.
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_3.3, Figure_3.4, ncol = 2, nrow = 1)
+```
+
+In the below bar plots for light condition and weather condition at location of the accidents, it can be observed that maximum number of accidents occurred in daylight and under fine weather condition with no high winds.
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_3.5, Figure_3.6, ncol = 2, nrow = 1)
+```
+
+The road surface condition plot below tells us that the more number of accidents have occurred in areas where the road surface was dry although the number of accidents where the roads where wet or damp where high too.
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_3.7, ncol = 2, nrow = 1)
+```
+
+#### 5.1.3 LSOA – E01005257 (Manchester 011B)
+
+```{r}
+## Plotting the chart for LSOA - E01005257, Manchester 011B
+
+p <- DF_MAN_MOTO_ACC_TOP5_AS %>% filter(lsoa_of_accident_location == "E01005257") %>%
+  ggplot(aes(x = "", y=count, fill = factor(accident_severity))) + 
+  geom_bar(width = 1, stat = "identity") +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5, size = 7),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 7)) + 
+  labs(fill="accident_severity", 
+       x=NULL, 
+       y=NULL, 
+       title="Pie Chart of Accident Severity"
+       )
+
+(Figure_4.0 <- p + coord_polar(theta = "y", start=0))
+
+ggsave("Figures/Figure_4.0.png", width = 16, height = 13)
+
+(Figure_4.1 <- DF_MAN_MOTO_ACC_TOP5_VT %>% filter(lsoa_of_accident_location == "E01005257") %>% 
+  ggplot(aes(x= Vehicle_Type, y= count, fill = Vehicle_Type)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Type of motor vehicle", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_4.1.png", width = 16, height = 13)
+
+(Figure_4.2 <- DF_MAN_MOTO_ACC_TOP5_RT %>% filter(lsoa_of_accident_location == "E01005257") %>% 
+  ggplot(aes(x= road_type, y= count, fill = road_type)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Type of road", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_4.2.png", width = 16, height = 13)
+
+(Figure_4.3 <- DF_MAN_MOTO_ACC_TOP5_JD %>% filter(lsoa_of_accident_location == "E01005257") %>% 
+  ggplot(aes(x= junction_detail, y= count, fill = junction_detail)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Junction Type Detail", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_4.3.png", width = 16, height = 13)
+
+(Figure_4.4 <- DF_MAN_MOTO_ACC_TOP5_JC %>% filter(lsoa_of_accident_location == "E01005257") %>% 
+  ggplot(aes(x= junction_control, y= count, fill = junction_control)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Traffic Control at Junction", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_4.4.png", width = 16, height = 13)
+
+(Figure_4.5 <- DF_MAN_MOTO_ACC_TOP5_LC %>% filter(lsoa_of_accident_location == "E01005257") %>% 
+  ggplot(aes(x= light_conditions, y= count, fill = light_conditions)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Light condition at location", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_4.5.png", width = 16, height = 13)
+
+(Figure_4.6 <- DF_MAN_MOTO_ACC_TOP5_WC %>% filter(lsoa_of_accident_location == "E01005257") %>% 
+  ggplot(aes(x= weather_conditions, y= count, fill = weather_conditions)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Weather condition at location", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_4.6.png", width = 16, height = 13)
+
+(Figure_4.7 <- DF_MAN_MOTO_ACC_TOP5_RSC %>% filter(lsoa_of_accident_location == "E01005257") %>% 
+  ggplot(aes(x= road_surface_conditions, y= count, fill = road_surface_conditions)) + 
+  geom_bar(stat="identity", width=.5, fill="blue") +
+  labs(x = "Road surface condition at location", y = "Count") + 
+  geom_text(aes(label = count), vjust=-0.45, size=2) +
+theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1, size = 5 )))
+
+ggsave("Figures/Figure_4.7.png", width = 16, height = 13)
+
+```
+
+This is third most accident prone zone in the local authority district of Manchester with 48 accidents occurring in this area. The pie chart below tells us that of these accidents, 1 was fatal 5 were serious and 42 were slight.
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 2, fig.width = 4, fig.align="center"}
+ggarrange(Figure_4.0,ncol = 1,nrow = 1,align = "h")
+```
+
+Of these accidents, 40 of them involved cars and 23 accidents occurred each in dual carriageways and single carriageways as evident from the bar plots below. 
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_4.1, Figure_4.2, ncol = 2, nrow = 1)
+```
+
+The junction detail graph below tells us that a significantly high number of accidents than the rest occurred in crossroads and T or staggered junction. The traffic control graph tells us that the accidents occurring at places with auto traffic signal or where the traffic is uncontrolled is significantly higher than the rest.
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_4.3, Figure_4.4, ncol = 2, nrow = 1)
+```
+
+The light and weather condition graphs below tell us that maximum number of accidents have occurred in daylight and under conditions when the weather was fine with no high winds.
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_4.5, Figure_4.6, ncol = 2, nrow = 1)
+```
+
+The road surface condition graph below tells us that although more number of accidents have occurred where the road surface was dry but a significantly high number of accidents have occurred on roads which were wet or damp.
+
+```{r, eval=TRUE, echo=FALSE, include=TRUE, fig.height = 3, fig.width = 6, fig.align="center"}
+ggarrange(Figure_4.7, ncol = 2, nrow = 1)
+```
+
+## 6. Discussion –
+
+From the analysis performed above, some similarities can be observed in the top three accident prone zones for motor vehicles– Manchester 058C, Manchester 053D and Manchester 011B of the local authority district of Manchester. In all these three zones, maximum number of accidents which have occurred involve cars and have occurred in single and dual carriage ways. 
+A significantly high number of motor vehicle accidents have occurred in cross roads and junctions which are T or staggered junctions. Also maximum number of accidents have occurred where the traffic is uncontrolled or give way and places where there are auto traffic signals.
+The results from the analysis above tells us that light conditions or weather conditions do play a major role since most of the accidents have occurred in daylight or fine weather conditions with no high wind. Road surface condition does play a role in the high number accidents with a significant number of accidents occurring on roads which were wet or damp.
+A notable observation worth mentioning is that in the zone Manchester 053D, maximum number of accidents have occurred at a location which is not a junction or within 20 metres. This would be strongly recommended to be investigated by the authorities further.
+
+## 7. Conclusion –
+
+The results from the analysis can be used for policy recommendations. Some general policy recommendations based on the results are mentioned below –
+
+1)	High number of accidents on wet and damp road could be attributed to skidding due to worn out tyres. A policy could be implemented to periodically check the wear and       tear of tyres. Just like periodic emission check.
+2)	Significantly high number of accidents in crossroads and T or staggered junctions recommend city planners to look into it and make necessary alterations.
+3)	High number of accidents in single carriage ways and dual carriageways and as well as in locations where traffic is auto controlled or uncontrolled suggests that the       traffic control authorities should implement strong measure to avoid this.
+
+## References -
+
+Rolison, J., Regev, S., Moutari, S., & Feeney, A. (2018). What are the factors that contribute to road accidents? An assessment of law enforcement views, ordinary drivers’ opinions, and road accident records. Accident Analysis and Prevention, 115, 11–24. https://doi.org/10.1016/j.aap.2018.02.025 (https://doi.org/10.1016/j.aap.2018.02.025)
+
+Lovelace, Robin, and Layik Hama. (2020). Pct: Propensity to Cycle Tool.
+
+Lovelace, R., Morgan, M., Hama, L., Padgham.(2019). M Download stats19 data: Introduction to stats19.
+
+Lovelace, R., Nowosad, J., Muenchow, J.(2021). Geocomputation with R.
